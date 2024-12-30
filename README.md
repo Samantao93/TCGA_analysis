@@ -11,6 +11,7 @@ Prepare the clinical data into a usable format (variable clinical_data).
 
 ## Data Preprocessing:
 
+- Search for duplicated records.
 - Replace unwanted values ([Not Available], [Not Evaluated], [Unknown], [Not Applicable]) with NA across all columns.
 - Filter out columns that have only NA values for analysis.
 - Convert certain columns (e.g., age_at_initial_pathologic_diagnosis) to numeric format.
@@ -29,3 +30,20 @@ Prepare the clinical data into a usable format (variable clinical_data).
 - Violin plot to show the relationship between age and AJCC pathologic tumor stage, including boxplots, smooth lines, and jittered points.
 - Pie Chart for Lung Region Distribution:
   - Create a dynamic pie chart using plotly to visualize the distribution of lung regions (anatomic organ subdivisions).
+
+## Survival Analysis:
+
+- The death_days_to and last_contact_days_to columns are converted to numeric format.
+- The vital_status change "Dead" to 1 and "Alive" to 0.
+- A new column, survival_time, is created to represent the time until death or last contact.
+
+### Kaplan-Meier Survival Curves:
+
+- Plot survival curves stratified by AJCC Pathologic Tumor Stage to see if there are significant differences between stages.
+- Check if EGFR mutation status has any significant impact on survival.
+- Analyze survival differences based on KRAS mutation status.
+  
+### Cox Proportional Hazards Model:
+
+The Cox regression model is used to assess the impact of variables such as age at diagnosis, AJCC tumor stage, and tobacco smoking history on survival.
+Hazard ratios (HR) are calculated for each predictor, and a forest plot is created to visualize the significance and effect size of each variable.
