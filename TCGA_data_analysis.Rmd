@@ -13,17 +13,20 @@ library(dplyr) # Processing data
 library(tidyr) # Processing data
 library(ggplot2) # Representation of the data
 library(gridExtra) # Representation of the data
+library(ggplotify) # Representation of the data and save the plot
 library(plotly) # Representation of the data
 library(survival) # Representation of survival
 library(survminer) # Representation of survival
 ```
+
+## Information of the project
 
 ```{r, echo=FALSE}
 # We obtain the information about the data that we are going to use
 getProjectSummary("TCGA-LUAD")
 ```
 
-```{r, data_acquisition, echo=FALSE}
+```{r, data_acquisition, include=FALSE}
 #We obtain the clinical data of lung cancer
 query <- GDCquery(
     project = "TCGA-LUAD", 
@@ -37,7 +40,7 @@ clinical <- GDCprepare(query)
 clinical_data<-data.frame(clinical$clinical_patient_luad[c(-1,-2),])
 ```
 
-```{r,echo=FALSE}
+```{r,include=FALSE}
 # Preprocess data
 ## Replace unwanted values with NA across all columns. [Discrepancy] is not removed because it is a relevant diagnosis
 unwanted_values <- c('[Not Available]', '[Not Evaluated]', '[Unknown]', '[Not Applicable]')
@@ -50,8 +53,9 @@ clinical_data_filter_col <- clinical_data[, colSums(!is.na(clinical_data) & clin
 clinical_data_filter_col$age_at_initial_pathologic_diagnosis <- as.numeric(clinical_data_filter_col$age_at_initial_pathologic_diagnosis)
 ```
 
-```{r}
 ## Show all the columns that has not relevant information to analyze (empty)
+
+```{r,echo=FALSE}
 names(clinical_data[!names(clinical_data) %in% names(clinical_data_filter_col)])
 ```
 ```{r, warning=FALSE}
@@ -61,9 +65,9 @@ plot_age <- ggplot(clinical_data_filter_col, aes(x = age_at_initial_pathologic_d
   labs(title = "Age Distribution of LUAD Patients", x = "Age", y = "Abs. Frequency") +
   theme_minimal() + 
   theme(
-    axis.title = element_text(size = 14, face = "bold", angle = 0, hjust = 0.5),
-    title = element_text(size = 20, face = "bold", angle = 0, hjust = 0.5),
-    axis.text = element_text(size = 14, face = "bold", angle = 0, hjust = 0.5)
+    axis.title = element_text(size = 12, face = "bold", angle = 0, hjust = 0.5),
+    title = element_text(size = 12, face = "bold", angle = 0, hjust = 0.5),
+    axis.text = element_text(size = 12, face = "bold", angle = 0, hjust = 0.5)
   )
 
 plot_vital_status <- ggplot(clinical_data_filter_col, aes(x = vital_status)) +
@@ -71,9 +75,9 @@ plot_vital_status <- ggplot(clinical_data_filter_col, aes(x = vital_status)) +
   labs(title = "Vital Status of LUAD Patients", x = "Vital Status", y = "Total") +
   theme_minimal() + 
   theme(
-    axis.title = element_text(size = 14, face = "bold", angle = 0, hjust = 0.5),
-    title = element_text(size = 20, face = "bold", angle = 0, hjust = 0.5),
-    axis.text = element_text(size = 14, face = "bold", angle = 0, hjust = 0.5)
+    axis.title = element_text(size = 12, face = "bold", angle = 0, hjust = 0.5),
+    title = element_text(size = 12, face = "bold", angle = 0, hjust = 0.5),
+    axis.text = element_text(size = 12, face = "bold", angle = 0, hjust = 0.5)
   )
 
 plot_gender <- ggplot(clinical_data_filter_col, aes(x = gender)) +
@@ -81,13 +85,14 @@ plot_gender <- ggplot(clinical_data_filter_col, aes(x = gender)) +
   labs(title = "Gender Distribution of LUAD Patients", x = "Gender", y = "Total") +
   theme_minimal() + 
   theme(
-    axis.title = element_text(size = 14, face = "bold", angle = 0, hjust = 0.5),
-    title = element_text(size = 20, face = "bold", angle = 0, hjust = 0.5),
-    axis.text = element_text(size = 14, face = "bold", angle = 0, hjust = 0.5)
+    axis.title = element_text(size = 12, face = "bold", angle = 0, hjust = 0.5),
+    title = element_text(size = 12, face = "bold", angle = 0, hjust = 0.5),
+    axis.text = element_text(size = 12, face = "bold", angle = 0, hjust = 0.5)
   )
 
 # Arrange the plots in a grid
-grid.arrange(plot_age, plot_vital_status, plot_gender, ncol = 2)
+grid_plot <- as.ggplot(grid.arrange(plot_age, plot_vital_status, plot_gender, ncol = 2))
+ggsave('./Grid_plots.png',plot = grid_plot,width = 2200,height = 1600,units = 'px')
 ```
 
 ```{r, warning=FALSE}
@@ -104,7 +109,7 @@ ggplot(clinical_data_filter_col, aes(x = age_at_initial_pathologic_diagnosis, fi
   scale_fill_manual(values = c("#66CDAA", "#CD1076"))
 ```
 
-```{r,warning=FALSE}
+```{r,warning=FALSE,message=FALSE}
 # First step, filter data with NA in the column ajcc_pathologic_tumor_stage
 clinical_data_violin <- clinical_data_filter_col %>% 
   filter(!is.na(ajcc_pathologic_tumor_stage))
