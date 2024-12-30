@@ -1,5 +1,5 @@
 ---
-title: "TCGA_analysis"
+title: "TCGA analysis"
 output: html_document
 ---
 
@@ -8,15 +8,14 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r,include=FALSE}
-library(TCGAbiolinks) # Download data
-library(dplyr) # Processing data
-library(tidyr) # Processing data
-library(ggplot2) # Representation of the data
-library(gridExtra) # Representation of the data
-library(ggplotify) # Representation of the data and save the plot
-library(plotly) # Representation of the data
-library(survival) # Representation of survival
-library(survminer) # Representation of survival
+library(TCGAbiolinks) # Download data (version: 2.34.0)
+library(dplyr) # Processing data (version: 1.1.4)
+library(ggplot2) # Representation of the data (version: 3.5.1)
+library(gridExtra) # Representation of the data (version: 2.3)
+library(ggplotify) # Representation of the data and save the plot (version: )
+library(plotly) # Representation of the data (version: 0.1.2)
+library(survival) # Representation of survival (version: 3.8-3)
+library(survminer) # Representation of survival (version: 0.5.0)
 ```
 
 ## Information of the project
@@ -26,7 +25,7 @@ library(survminer) # Representation of survival
 getProjectSummary("TCGA-LUAD")
 ```
 
-```{r, data_acquisition, include=FALSE}
+```{r, include=FALSE}
 #We obtain the clinical data of lung cancer
 query <- GDCquery(
     project = "TCGA-LUAD", 
@@ -37,11 +36,15 @@ query <- GDCquery(
 # clinical <- getResults(query)
 GDCdownload(query)
 clinical <- GDCprepare(query)
+# Remove the first two rows with information about the column
 clinical_data<-data.frame(clinical$clinical_patient_luad[c(-1,-2),])
 ```
 
-```{r,include=FALSE}
+```{r, include=FALSE}
 # Preprocess data
+## Are there duplicated patients? 
+table(duplicated(clinical_data$bcr_patient_barcode)) # No
+
 ## Replace unwanted values with NA across all columns. [Discrepancy] is not removed because it is a relevant diagnosis
 unwanted_values <- c('[Not Available]', '[Not Evaluated]', '[Unknown]', '[Not Applicable]')
 clinical_data <- clinical_data %>%
@@ -58,7 +61,7 @@ clinical_data_filter_col$age_at_initial_pathologic_diagnosis <- as.numeric(clini
 ```{r,echo=FALSE}
 names(clinical_data[!names(clinical_data) %in% names(clinical_data_filter_col)])
 ```
-```{r, warning=FALSE}
+```{r,warning=FALSE,message=FALSE}
 ## Create the individual plots of age, Vital status and gender
 plot_age <- ggplot(clinical_data_filter_col, aes(x = age_at_initial_pathologic_diagnosis)) +
   geom_histogram(binwidth = 10, color = "black", fill = "#7AC5CD", alpha = 0.7) +
@@ -95,7 +98,7 @@ grid_plot <- as.ggplot(grid.arrange(plot_age, plot_vital_status, plot_gender, nc
 ggsave('./Grid_plots.png',plot = grid_plot,width = 2200,height = 1600,units = 'px')
 ```
 
-```{r, warning=FALSE}
+```{r,warning=FALSE,message=FALSE}
 ggplot(clinical_data_filter_col, aes(x = age_at_initial_pathologic_diagnosis, fill = vital_status)) +
   geom_histogram(binwidth = 10, color='black') +
   labs(title = "Age Distribution Stratified by Gender and Vital Status", x = "Age", y = "Total") +
@@ -117,7 +120,6 @@ clinical_data_violin <- clinical_data_filter_col %>%
 ggplot(clinical_data_violin, aes(x = ajcc_pathologic_tumor_stage, y = age_at_initial_pathologic_diagnosis)) +
   geom_violin(fill = "lightblue", color = "black", alpha = 0.7) +
   geom_boxplot(width = 0.2, color = "black", alpha = 0.5, show.legend = FALSE) + 
-  geom_smooth(aes(group = 1), method = "loess", color = "blue", size = 1.2, se = FALSE) +
   geom_jitter(aes(color = ajcc_pathologic_tumor_stage), width = 0.2, alpha = 0.6, size = 2) +
   labs(title = "Age Distribution by AJCC Pathologic Tumor Stage", x = "AJCC Pathologic Tumor Stage", y = "Age") +
   theme_minimal() +
@@ -127,7 +129,7 @@ ggplot(clinical_data_violin, aes(x = ajcc_pathologic_tumor_stage, y = age_at_ini
     axis.text.y = element_text(size = 12)
   )
 ```
-```{r}
+```{r,warning=FALSE,message=FALSE}
 data <- table(clinical_data_filter_col$anatomic_organ_subdivision)
 
 # Convert the regions and the absolute frequency into a dataframe
@@ -150,6 +152,102 @@ plot_ly(df,
   )
 ```
 
+# Survival analysis
 
+```{r, echo=FALSE,warning=FALSE}
+# Ensure columns are numeric
+clinical_data_filter_col$death_days_to <- as.numeric(clinical_data_filter_col$death_days_to)
+clinical_data_filter_col$last_contact_days_to <- as.numeric(clinical_data_filter_col$last_contact_days_to)
+
+# clinical_data_filter_col vital_status, convert to numeric (e.g., 1 for "Dead", 0 for "Alive")
+clinical_data_filter_col$vital_status <- ifelse(clinical_data_filter_col$vital_status == "Dead", 1, 0)
+
+# Create survival_time column
+clinical_data_filter_col$survival_time <- ifelse(clinical_data_filter_col$vital_status == 1, 
+                                                 clinical_data_filter_col$death_days_to, 
+                                                 clinical_data_filter_col$last_contact_days_to)
+clinical_data_survival <- clinical_data_filter_col %>%
+  filter(!is.na(survival_time) & !is.na(ajcc_pathologic_tumor_stage))
+  
+```
+
+## Kaplan-Meier survival curves
+
+### Tumor stage (survival distributions between the groups are significantly different)
+
+```{r}
+fit <- survfit(Surv(survival_time, vital_status) ~ ajcc_pathologic_tumor_stage, data = clinical_data_survival)
+ggsurvplot(fit, data = clinical_data_survival, pval = TRUE, risk.table = FALSE,
+           legend = c(0.93, 0.6),
+           legend.labs = c("Discrepancy","Stage I","Stage IA","Stage IB","Stage II","Stage IIA","Stage IIB", "Stage IIIA", "Stage IIIB", "Stage IV"),
+           legend.title = element_blank()
+) 
+```
+
+```{r}
+ggsurvplot(fit, data = clinical_data_survival, risk.table = TRUE,
+           legend.labs = c("Discrepancy","Stage I","Stage IA","Stage IB","Stage II","Stage IIA","Stage IIB", "Stage IIIA", "Stage IIIB", "Stage IV"),
+           legend.title = element_blank(),
+           risk.table.height = 1
+) 
+```
+
+
+### *EGFR* mutation (survival distributions are the same)
+
+```{r}
+fit_egfr <- survfit(Surv(survival_time, vital_status) ~ egfr_mutation_status, data = clinical_data_survival)
+ggsurvplot(fit_egfr, data = clinical_data_survival, pval = TRUE)
+```
+
+### *KRAS* mutation (survival distributions are the same)
+
+```{r}
+fit_kras <- survfit(Surv(survival_time, vital_status) ~ kras_mutation_found, data = clinical_data_survival)
+ggsurvplot(fit_kras, data = clinical_data_survival, pval = TRUE)
+```
+
+## Cox Proportional Hazards Model
+
+```{r,warning=FALSE}
+# Adjust the model
+cox <- coxph(Surv(survival_time, vital_status) ~ age_at_initial_pathologic_diagnosis + ajcc_pathologic_tumor_stage + tobacco_smoking_pack_years_smoked, data = clinical_data_survival)
+# summary(cox)
+```
+
+```{r}
+# Obtain the results, create a dataframe for the graphic and filter
+summary_cox <- summary(cox)
+hr_data <- data.frame(
+  Variable = rownames(summary_cox$coefficients), 
+  HR = exp(summary_cox$coefficients[, "coef"]),  
+  lower_ci = exp(summary_cox$conf.int[, "lower .95"]), 
+  upper_ci = exp(summary_cox$conf.int[, "upper .95"]),  
+  p_value = summary_cox$coefficients[, "Pr(>|z|)"] 
+)
+hr_data_filtered <- hr_data %>% filter(p_value < 0.05)
+```
+
+
+```{r}
+# Forest plot (Only with relevant variables with significative effect on Death)
+ggplot(hr_data_filtered, aes(x = HR, y = Variable)) +
+  geom_point(aes(color = p_value < 0.05), size = 4) + 
+  geom_errorbarh(aes(xmin = lower_ci, xmax = upper_ci), height = 0.2) +
+  scale_x_log10() + 
+  labs(
+    title = "Hazard Ratios (HR) de Supervivencia con Regresión de Cox",
+    x = "Hazard Ratio (HR)",
+    y = "Variables"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 14, face = "bold"),
+    axis.text = element_text(size = 12),
+    title = element_text(size = 16, face = "bold"),
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1)
+  ) +
+  geom_vline(xintercept = 1, linetype = "dashed", color = "red") 
+```
 
 
