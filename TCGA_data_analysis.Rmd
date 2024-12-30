@@ -1,0 +1,150 @@
+---
+title: "TCGA_analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,include=FALSE}
+library(TCGAbiolinks) # Download data
+library(dplyr) # Processing data
+library(tidyr) # Processing data
+library(ggplot2) # Representation of the data
+library(gridExtra) # Representation of the data
+library(plotly) # Representation of the data
+library(survival) # Representation of survival
+library(survminer) # Representation of survival
+```
+
+```{r, echo=FALSE}
+# We obtain the information about the data that we are going to use
+getProjectSummary("TCGA-LUAD")
+```
+
+```{r, data_acquisition, echo=FALSE}
+#We obtain the clinical data of lung cancer
+query <- GDCquery(
+    project = "TCGA-LUAD", 
+    data.category = "Clinical",
+    data.type = "Clinical Supplement", 
+    data.format = "BCR Biotab"
+)
+# clinical <- getResults(query)
+GDCdownload(query)
+clinical <- GDCprepare(query)
+clinical_data<-data.frame(clinical$clinical_patient_luad[c(-1,-2),])
+```
+
+```{r,echo=FALSE}
+# Preprocess data
+## Replace unwanted values with NA across all columns. [Discrepancy] is not removed because it is a relevant diagnosis
+unwanted_values <- c('[Not Available]', '[Not Evaluated]', '[Unknown]', '[Not Applicable]')
+clinical_data <- clinical_data %>%
+  mutate(across(everything(), ~ifelse(. %in% unwanted_values, NA, .)))
+
+
+## Filter the columns that are completely NA
+clinical_data_filter_col <- clinical_data[, colSums(!is.na(clinical_data) & clinical_data != "") > 0]
+clinical_data_filter_col$age_at_initial_pathologic_diagnosis <- as.numeric(clinical_data_filter_col$age_at_initial_pathologic_diagnosis)
+```
+
+```{r}
+## Show all the columns that has not relevant information to analyze (empty)
+names(clinical_data[!names(clinical_data) %in% names(clinical_data_filter_col)])
+```
+```{r, warning=FALSE}
+## Create the individual plots of age, Vital status and gender
+plot_age <- ggplot(clinical_data_filter_col, aes(x = age_at_initial_pathologic_diagnosis)) +
+  geom_histogram(binwidth = 10, color = "black", fill = "#7AC5CD", alpha = 0.7) +
+  labs(title = "Age Distribution of LUAD Patients", x = "Age", y = "Abs. Frequency") +
+  theme_minimal() + 
+  theme(
+    axis.title = element_text(size = 14, face = "bold", angle = 0, hjust = 0.5),
+    title = element_text(size = 20, face = "bold", angle = 0, hjust = 0.5),
+    axis.text = element_text(size = 14, face = "bold", angle = 0, hjust = 0.5)
+  )
+
+plot_vital_status <- ggplot(clinical_data_filter_col, aes(x = vital_status)) +
+  geom_bar(fill = c("#66CDAA", "#CD1076"), color = "black") +
+  labs(title = "Vital Status of LUAD Patients", x = "Vital Status", y = "Total") +
+  theme_minimal() + 
+  theme(
+    axis.title = element_text(size = 14, face = "bold", angle = 0, hjust = 0.5),
+    title = element_text(size = 20, face = "bold", angle = 0, hjust = 0.5),
+    axis.text = element_text(size = 14, face = "bold", angle = 0, hjust = 0.5)
+  )
+
+plot_gender <- ggplot(clinical_data_filter_col, aes(x = gender)) +
+  geom_bar(fill = c("#9A32CD", "#1874CD"), color = "black") +
+  labs(title = "Gender Distribution of LUAD Patients", x = "Gender", y = "Total") +
+  theme_minimal() + 
+  theme(
+    axis.title = element_text(size = 14, face = "bold", angle = 0, hjust = 0.5),
+    title = element_text(size = 20, face = "bold", angle = 0, hjust = 0.5),
+    axis.text = element_text(size = 14, face = "bold", angle = 0, hjust = 0.5)
+  )
+
+# Arrange the plots in a grid
+grid.arrange(plot_age, plot_vital_status, plot_gender, ncol = 2)
+```
+
+```{r, warning=FALSE}
+ggplot(clinical_data_filter_col, aes(x = age_at_initial_pathologic_diagnosis, fill = vital_status)) +
+  geom_histogram(binwidth = 10, color='black') +
+  labs(title = "Age Distribution Stratified by Gender and Vital Status", x = "Age", y = "Total") +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_text(size = 14, face = "bold", angle = 0, hjust = 0.5),
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 12)
+  ) +
+  facet_wrap(~ gender) +  # Facet by gender
+  scale_fill_manual(values = c("#66CDAA", "#CD1076"))
+```
+
+```{r,warning=FALSE}
+# First step, filter data with NA in the column ajcc_pathologic_tumor_stage
+clinical_data_violin <- clinical_data_filter_col %>% 
+  filter(!is.na(ajcc_pathologic_tumor_stage))
+# Violin plot to represent the age of the patients along AJCC tumor stage
+ggplot(clinical_data_violin, aes(x = ajcc_pathologic_tumor_stage, y = age_at_initial_pathologic_diagnosis)) +
+  geom_violin(fill = "lightblue", color = "black", alpha = 0.7) +
+  geom_boxplot(width = 0.2, color = "black", alpha = 0.5, show.legend = FALSE) + 
+  geom_smooth(aes(group = 1), method = "loess", color = "blue", size = 1.2, se = FALSE) +
+  geom_jitter(aes(color = ajcc_pathologic_tumor_stage), width = 0.2, alpha = 0.6, size = 2) +
+  labs(title = "Age Distribution by AJCC Pathologic Tumor Stage", x = "AJCC Pathologic Tumor Stage", y = "Age") +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 14, face = "bold"),
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(size = 12)
+  )
+```
+```{r}
+data <- table(clinical_data_filter_col$anatomic_organ_subdivision)
+
+# Convert the regions and the absolute frequency into a dataframe
+df <- data.frame(
+  Region = names(data),
+  Count = as.numeric(data)
+)
+
+# Pie chart of the distribution of Lung Regions with plotly (dinamic representation)
+plot_ly(df, 
+                 labels = ~Region,
+                 values = ~Count,
+                 type = 'pie',
+                 textinfo = 'label+percent',
+                 hoverinfo = 'label+percent', 
+                 marker = list(colors = c('#66CDAA', '#CD1076', '#1E90FF', '#FFD700', '#8A2BE2'))) %>%
+  layout(
+    title = "Distribution of Lung Regions", 
+    showlegend = TRUE 
+  )
+```
+
+
+
+
