@@ -4,6 +4,17 @@
 
 Load necessary libraries for data acquisition (TCGAbiolinks), data manipulation (dplyr, tidyr), data visualization (ggplot2, plotly), and survival analysis (survival, survminer).
 
+### Packages version:
+
+- TCGAbiolinks: 2.34.0
+- dplyr: 1.1.4
+- ggplot2: 3.5.1
+- gridExtra: 2.3
+- ggplotify: 0.1.2
+- plotly: 4.10.4
+- survival: 3.8-3
+- survminer: 0.5.0
+
 ## Data Acquisition:
 
 Use TCGAbiolinks to query and download the clinical data for lung cancer (LUAD) from the Genomic Data Commons (GDC).
